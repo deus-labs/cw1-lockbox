@@ -1,5 +1,6 @@
 use crate::state::{Claim, Lockbox};
 use cosmwasm_std::{Addr, Uint128, Uint64};
+use cw20::Cw20ReceiveMsg;
 use cw_utils::{Expiration, Scheduled};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -16,9 +17,18 @@ pub enum ExecuteMsg {
         owner: String,
         claims: Vec<Claim>,
         expiration: Scheduled,
-        native_token: Option<String>
+        native_token: Option<String>,
+        cw20_addr: Option<String>
     },
     Reset {},
+    Deposit {id: Uint64},
+    /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
+    Receive(Cw20ReceiveMsg),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiveMsg {
     Deposit {id: Uint64},
 }
 

@@ -1,13 +1,14 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError, Response, StdError, StdResult, Uint128, Uint64, Order, Coin};
+use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError, Response, StdError, StdResult, Uint128, Uint64, Order, Coin, from_slice};
 use cw2::set_contract_version;
 use cw_utils::{NativeBalance, Scheduled};
 use std::ops::Add;
+use cw20::Cw20ReceiveMsg;
 use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, ListLockboxResponse, LockboxResponse, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, ListLockboxResponse, LockboxResponse, QueryMsg, ReceiveMsg};
 use crate::state::{Claim, Config, Lockbox, CONFIG, LOCKBOXES, LOCK_BOX_SEQ};
 
 // version info for migration info
@@ -45,10 +46,11 @@ pub fn execute(
             owner,
             claims,
             expiration,
-            native_token
-        } => execute_create_lockbox(deps, env, info, owner, claims, expiration, native_token),
+            native_token, cw20_addr
+        } => execute_create_lockbox(deps, env, info, owner, claims, expiration, native_token, cw20_addr),
         ExecuteMsg::Reset {} => unimplemented!(),
-        ExecuteMsg::Deposit { id } => execute_deposit(deps, env, info, id)
+        ExecuteMsg::Deposit { id } => execute_deposit_native(deps, env, info, id),
+        ExecuteMsg::Receive(_) => {}
     }
 }
 
@@ -59,13 +61,20 @@ pub fn execute_create_lockbox(
     owner: String,
     claims: Vec<Claim>,
     expiration: Scheduled,
-    native_token: Option<String>
+    native_token: Option<String>,
+    cw20_addr: Option<String>
 ) -> Result<Response, ContractError> {
     let owner = deps.api.addr_validate(&owner)?;
 
     if expiration.is_triggered(&env.block) {
         return Err(ContractError::LockboxExpired {});
     }
+
+    match (native_token.clone(), cw20_addr) {
+        (Some(_), Some(_)) => Err(ContractError::NotSupportDenom {}),
+        (None, None) => Err(ContractError::NotSupportDenom {}),
+        (_, _) => Ok(()),
+    }?;
 
     let total_amount: Uint128 = claims.clone().into_iter().map(|c| c.amount).sum();
 
@@ -78,7 +87,8 @@ pub fn execute_create_lockbox(
         expiration,
         total_amount,
         resetted: false,
-        native_denom: native_token
+        native_denom: native_token,
+        cw20_addr: None
     };
 
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
@@ -86,7 +96,7 @@ pub fn execute_create_lockbox(
     Ok(Response::new().add_attribute("method", "execute_create_lockbox"))
 }
 
-pub fn execute_deposit(
+pub fn execute_deposit_native(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -104,7 +114,7 @@ pub fn execute_deposit(
             .find(|c| c.denom == denom)
             .ok_or(ContractError::NotSupportDenom {})?;
 
-    lockbox.total_amount += coin.amount;
+    lockbox.total_amount -= coin.amount;
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
 
     Ok(Response::default()
@@ -113,6 +123,41 @@ pub fn execute_deposit(
     )
 }
 
+pub fn execute_receive(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    wrapper: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    let msg: ReceiveMsg = from_slice(&wrapper.msg)?;
+    let amount = wrapper.amount;
+    match msg {
+        ReceiveMsg::Deposit { id } => execute_deposit(deps, env, info, id, amount)
+    }
+}
+
+pub fn execute_deposit(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    id: Uint64,
+    amount: Uint128
+) -> Result<Response, ContractError> {
+    let mut lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
+    let cw20_addr = lockbox.cw20_addr.ok_or(ContractError::NotSupportDenom {})?;
+    if info.sender != cw20_addr {
+        return Err(ContractError::Unauthorized {})
+    }
+
+    lockbox.total_amount.checked_sub(amount)?;
+    LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
+
+
+    Ok(Response::default()
+        .add_attribute("action", "deposit")
+        .add_attribute("amount", amount)
+    )
+}
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
