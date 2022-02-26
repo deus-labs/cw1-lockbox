@@ -20,15 +20,17 @@ pub enum ExecuteMsg {
         native_token: Option<String>,
         cw20_addr: Option<String>,
     },
-    Reset {},
+    Reset {
+        id: Uint64,
+    },
     Deposit {
+        id: Uint64,
+    },
+    Claim {
         id: Uint64,
     },
     /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
     Receive(Cw20ReceiveMsg),
-    Claim {
-        id: Uint64,
-    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -63,7 +65,7 @@ impl Into<LockboxResponse> for Lockbox {
             claims: self.claims,
             expiration: self.expiration,
             total_amount: self.total_amount,
-            resetted: self.resetted,
+            resetted: self.reset,
         }
     }
 }

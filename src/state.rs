@@ -1,7 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::testing::MockApi;
 use cosmwasm_std::{Addr, Uint128, Uint64};
 use cw_storage_plus::{Item, Map};
 use cw_utils::Scheduled;
@@ -21,7 +20,7 @@ pub struct Lockbox {
     pub claims: Vec<Claim>,
     pub expiration: Scheduled,
     pub total_amount: Uint128,
-    pub resetted: bool,
+    pub reset: bool,
     pub native_denom: Option<String>,
     pub cw20_addr: Option<Addr>,
 }

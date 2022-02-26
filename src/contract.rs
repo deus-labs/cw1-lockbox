@@ -65,7 +65,7 @@ pub fn execute(
             native_token,
             cw20_addr,
         ),
-        ExecuteMsg::Reset {} => unimplemented!(),
+        ExecuteMsg::Reset { id } => execute_reset(deps, env, info, id),
         ExecuteMsg::Deposit { id } => execute_deposit_native(deps, env, info, id),
         ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::Claim { id } => execute_claim(deps, env, info, id),
@@ -104,7 +104,7 @@ pub fn execute_create_lockbox(
         claims,
         expiration,
         total_amount,
-        resetted: false,
+        reset: false,
         native_denom: native_token,
         cw20_addr: None,
     };
@@ -189,7 +189,7 @@ pub fn execute_claim(
 ) -> Result<Response, ContractError> {
     let lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
 
-    if lockbox.resetted {
+    if lockbox.reset {
         return Err(ContractError::Reset {});
     }
     if !lockbox.expiration.is_triggered(&env.block) {
@@ -242,6 +242,25 @@ pub fn execute_claim(
     Ok(res)
 }
 
+pub fn execute_reset(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    id: Uint64,
+) -> Result<Response, ContractError> {
+    let mut lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
+    if info.sender != lockbox.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    lockbox.reset = true;
+    LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "reset")
+        .add_attribute("id", id))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -257,7 +276,7 @@ fn query_lockbox(deps: Deps, id: Uint64) -> StdResult<LockboxResponse> {
         claims: lockbox.claims,
         expiration: lockbox.expiration,
         total_amount: lockbox.total_amount,
-        resetted: lockbox.resetted,
+        resetted: lockbox.reset,
     };
     Ok(res)
 }
