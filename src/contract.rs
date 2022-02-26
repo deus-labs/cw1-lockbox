@@ -265,6 +265,7 @@ pub fn execute_reset(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetLockBox { id } => to_binary(&query_lockbox(deps, id)?),
+        QueryMsg::ListLockBox { start_after, limit } => to_binary(&range_lockbox(deps, start_after, limit)?)
     }
 }
 

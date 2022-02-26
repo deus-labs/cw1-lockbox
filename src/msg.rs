@@ -43,6 +43,7 @@ pub enum ReceiveMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     GetLockBox { id: Uint64 },
+    ListLockBox{ start_after: Option<u64>, limit: Option<u32> }
 }
 
 // We define a custom struct for each query response
