@@ -23,7 +23,7 @@ pub struct Lockbox {
     pub total_amount: Uint128,
     pub resetted: bool,
     pub native_denom: Option<String>,
-    pub cw20_addr: Option<Addr>
+    pub cw20_addr: Option<Addr>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

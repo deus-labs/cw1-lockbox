@@ -18,18 +18,23 @@ pub enum ExecuteMsg {
         claims: Vec<Claim>,
         expiration: Scheduled,
         native_token: Option<String>,
-        cw20_addr: Option<String>
+        cw20_addr: Option<String>,
     },
     Reset {},
-    Deposit {id: Uint64},
+    Deposit {
+        id: Uint64,
+    },
     /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
     Receive(Cw20ReceiveMsg),
+    Claim {
+        id: Uint64,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiveMsg {
-    Deposit {id: Uint64},
+    Deposit { id: Uint64 },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -52,13 +57,13 @@ pub struct LockboxResponse {
 
 impl Into<LockboxResponse> for Lockbox {
     fn into(self) -> LockboxResponse {
-        LockboxResponse{
+        LockboxResponse {
             id: self.id,
             owner: self.owner,
             claims: self.claims,
             expiration: self.expiration,
             total_amount: self.total_amount,
-            resetted: self.resetted
+            resetted: self.resetted,
         }
     }
 }
