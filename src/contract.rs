@@ -1,11 +1,13 @@
+use std::ops::Add;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Addr, Uint128, Uint64, StdError, OverflowError};
 use cw2::set_contract_version;
+use cw_utils::Scheduled;
 
 use crate::error::ContractError;
 use crate::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, CONFIG};
+use crate::state::{Claim, Config, CONFIG, LOCK_BOX_SEQ, Lockbox, LOCKBOXES};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw1-lockbox";
@@ -16,51 +18,68 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let admin = deps.api.addr_validate(msg.admin.as_str())?;
-    let state = Config { admin };
-
+    let state = Config {};
     CONFIG.save(deps.storage, &state)?;
+
+    LOCK_BOX_SEQ.save(deps.storage, &Uint64::zero())?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
-        .add_attribute("owner", info.sender)
-        .add_attribute("count", msg.count.to_string()))
+        .add_attribute("owner", info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => try_increment(deps),
-        ExecuteMsg::Reset { count } => try_reset(deps, info, count),
+        ExecuteMsg::CreateLockbox {
+            owner,
+            claims,
+            expiration,
+        } => execute_create_lockbox(deps, env, info, owner, claims, expiration),
+        ExecuteMsg::Reset {} => unimplemented!(),
     }
 }
 
-pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
-    CONFIG.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        state.count += 1;
-        Ok(state)
+pub fn execute_create_lockbox(
+    deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    owner: String,
+    claims: Vec<Claim>,
+    expiration: Scheduled,
+) -> Result<Response, ContractError> {
+    let owner = deps.api.addr_validate(&owner)?;
+
+    if expiration.is_triggered(&env.block) {
+        return Err(ContractError::LockboxExpired {});
+    }
+
+    let total_amount: Uint128 = claims.clone().into_iter().map(|c| c.amount).sum();
+
+    let id = LOCK_BOX_SEQ.update::<_, StdError>(deps.storage, |id| {
+        Ok(id.add(Uint64::new(1)))
     })?;
 
-    Ok(Response::new().add_attribute("method", "try_increment"))
-}
-pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-    CONFIG.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(Response::new().add_attribute("method", "reset"))
+    let lockbox = Lockbox{
+        id,
+        owner,
+        claims,
+        expiration,
+        total_amount
+    };
+
+    LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
+
+    Ok(Response::new().add_attribute("method", "execute_create_lockbox"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -71,14 +90,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 fn query_count(deps: Deps) -> StdResult<CountResponse> {
-    let state = CONFIG.load(deps.storage)?;
-    Ok(CountResponse { count: state.count })
+    unimplemented!()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies_with_balance, mock_env, mock_info};
+    use cosmwasm_std::testing::{mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info};
     use cosmwasm_std::{coins, from_binary};
 
     /*
@@ -147,4 +165,28 @@ mod tests {
     }
 
      */
+
+    #[test]
+    fn create_lockbox() {
+        let mut deps = mock_dependencies();
+
+        let msg = InstantiateMsg { admin: "ADMIN".to_string()};
+        let info = mock_info("creator", &[]);
+        let mut env = mock_env();
+        env.block.height = 1;
+        let _res = instantiate(deps.as_mut(), env, info.clone(), msg).unwrap();
+
+        let claims = vec![
+            Claim{ addr: "claim1".to_string(), amount: Uint128::new(4) },
+            Claim{ addr: "claim2".to_string(), amount: Uint128::new(15) },
+        ];
+        let msg = ExecuteMsg::CreateLockbox{
+            owner: "OWNER".to_string(),
+            claims,
+            expiration: Scheduled::AtHeight(5)
+        };
+        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(err, ContractError::LockboxExpired{});
+
+    }
 }
