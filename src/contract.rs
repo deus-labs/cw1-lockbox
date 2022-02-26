@@ -10,7 +10,7 @@ use cw20::Denom::Cw20;
 use cw20::{Cw20Contract, Cw20ExecuteMsg, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 use cw_utils::{NativeBalance, Scheduled};
-use std::ops::Add;
+use std::ops::{Add, Deref};
 
 use crate::error::ContractError;
 use crate::msg::{
@@ -96,7 +96,8 @@ pub fn execute_create_lockbox(
 
     let total_amount: Uint128 = claims.clone().into_iter().map(|c| c.amount).sum();
 
-    let id = LOCK_BOX_SEQ.update::<_, StdError>(deps.storage, |id| Ok(id.add(Uint64::new(1))))?;
+    let id = LOCK_BOX_SEQ
+        .update::<_, StdError>(deps.storage, |id| Ok(id.add(Uint64::new(1))))?;
 
     let lockbox = Lockbox {
         id,
@@ -136,7 +137,7 @@ pub fn execute_deposit_native(
         .find(|c| c.denom == denom)
         .ok_or(ContractError::NotSupportDenom {})?;
 
-    lockbox.total_amount -= coin.amount;
+    lockbox.total_amount = lockbox.total_amount.checked_sub(coin.amount)?;
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
 
     Ok(Response::default()
@@ -173,7 +174,7 @@ pub fn execute_deposit(
         return Err(ContractError::Unauthorized {});
     }
 
-    lockbox.total_amount.checked_sub(amount)?;
+    lockbox.total_amount = lockbox.total_amount.checked_sub(amount)?;
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
 
     Ok(Response::default()
@@ -206,14 +207,8 @@ pub fn execute_claim(
         (None, None) => Err(ContractError::Unauthorized {}),
         (Some(_), Some(_)) => Err(ContractError::Unauthorized {}),
         (Some(cw20_addr), None) => {
-            /*
-            let balance = Cw20Contract(cw20_addr).balance(deps.querier.wrap(), env.contract.address)?;
-            if balance < claim.amount {
-                return Err(ContractError::InsufficientBalance{})
-            }
-             */
             let msg = Cw20ExecuteMsg::Transfer {
-                recipient: claim.addr,
+                recipient: claim.addr.to_string(),
                 amount: claim.amount,
             };
             Cw20Contract(cw20_addr)
@@ -228,7 +223,7 @@ pub fn execute_claim(
                 return Err(ContractError::InsufficientBalance {});
             }
             let msg = BankMsg::Send {
-                to_address: claim.addr,
+                to_address: claim.addr.to_string(),
                 amount: vec![Coin {
                     denom: native,
                     amount: claim.amount,
@@ -393,11 +388,11 @@ mod tests {
 
         let claims = vec![
             Claim {
-                addr: "claim1".to_string(),
+                addr: Addr::unchecked("claim1"),
                 amount: Uint128::new(4),
             },
             Claim {
-                addr: "claim2".to_string(),
+                addr: Addr::unchecked("claim2".to_string()),
                 amount: Uint128::new(15),
             },
         ];

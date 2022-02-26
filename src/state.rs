@@ -27,7 +27,7 @@ pub struct Lockbox {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Claim {
-    pub addr: String,
+    pub addr: Addr,
     pub amount: Uint128,
 }
 
