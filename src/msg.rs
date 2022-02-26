@@ -1,4 +1,4 @@
-use crate::state::Claim;
+use crate::state::{Claim, Lockbox};
 use cosmwasm_std::{Addr, Uint128, Uint64};
 use cw_utils::{Expiration, Scheduled};
 use schemars::JsonSchema;
@@ -16,8 +16,10 @@ pub enum ExecuteMsg {
         owner: String,
         claims: Vec<Claim>,
         expiration: Scheduled,
+        native_token: Option<String>
     },
     Reset {},
+    Deposit {id: Uint64},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -36,6 +38,19 @@ pub struct LockboxResponse {
     pub expiration: Scheduled,
     pub total_amount: Uint128,
     pub resetted: bool,
+}
+
+impl Into<LockboxResponse> for Lockbox {
+    fn into(self) -> LockboxResponse {
+        LockboxResponse{
+            id: self.id,
+            owner: self.owner,
+            claims: self.claims,
+            expiration: self.expiration,
+            total_amount: self.total_amount,
+            resetted: self.resetted
+        }
+    }
 }
 
 // We define a custom struct for each query response

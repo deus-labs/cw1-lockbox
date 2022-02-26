@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError, Response, StdError, StdResult, Uint128, Uint64, Order};
+use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError, Response, StdError, StdResult, Uint128, Uint64, Order, Coin};
 use cw2::set_contract_version;
-use cw_utils::Scheduled;
+use cw_utils::{NativeBalance, Scheduled};
 use std::ops::Add;
 use cw_storage_plus::Bound;
 
@@ -45,8 +45,10 @@ pub fn execute(
             owner,
             claims,
             expiration,
-        } => execute_create_lockbox(deps, env, info, owner, claims, expiration),
+            native_token
+        } => execute_create_lockbox(deps, env, info, owner, claims, expiration, native_token),
         ExecuteMsg::Reset {} => unimplemented!(),
+        ExecuteMsg::Deposit { id } => execute_deposit(deps, env, info, id)
     }
 }
 
@@ -57,6 +59,7 @@ pub fn execute_create_lockbox(
     owner: String,
     claims: Vec<Claim>,
     expiration: Scheduled,
+    native_token: Option<String>
 ) -> Result<Response, ContractError> {
     let owner = deps.api.addr_validate(&owner)?;
 
@@ -75,11 +78,39 @@ pub fn execute_create_lockbox(
         expiration,
         total_amount,
         resetted: false,
+        native_denom: native_token
     };
 
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
 
     Ok(Response::new().add_attribute("method", "execute_create_lockbox"))
+}
+
+pub fn execute_deposit(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    id: Uint64,
+) -> Result<Response, ContractError> {
+    let mut lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
+    if lockbox.expiration.is_triggered(&env.block) {
+        return Err(ContractError::LockboxExpired {})
+    }
+
+    let denom = lockbox.native_denom.clone().ok_or(ContractError::SendNativeTokens {})?;
+
+    let coin: &Coin = info.funds
+            .iter()
+            .find(|c| c.denom == denom)
+            .ok_or(ContractError::NotSupportDenom {})?;
+
+    lockbox.total_amount += coin.amount;
+    LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
+
+    Ok(Response::default()
+        .add_attribute("action", "deposit")
+        .add_attribute("amount", coin.amount)
+    )
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -119,7 +150,7 @@ fn range_lockbox(
         .collect();
 
     let res = ListLockboxResponse{
-        lockboxes: lockboxes?.into_iter().map(|l| l.1).collect()
+        lockboxes: lockboxes?.into_iter().map(|l| l.1.into()).collect()
     };
     Ok(res)
 }
@@ -225,6 +256,7 @@ mod tests {
             owner: "OWNER".to_string(),
             claims: claims.clone(),
             expiration: Scheduled::AtHeight(5),
+            native_token: None
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap_err();
         assert_eq!(err, ContractError::LockboxExpired {});
@@ -233,6 +265,7 @@ mod tests {
             owner: "OWNER".to_string(),
             claims: claims.clone(),
             expiration: Scheduled::AtHeight(100_000),
+            native_token: None
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 

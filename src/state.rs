@@ -22,6 +22,7 @@ pub struct Lockbox {
     pub expiration: Scheduled,
     pub total_amount: Uint128,
     pub resetted: bool,
+    pub native_denom: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

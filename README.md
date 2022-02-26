@@ -11,6 +11,7 @@ the supplied different accounts can move the tokens out.
 - Claim{id: Uint64}
 - Deposit{id: Uint64}
 
+
 ## Query
 
 - Lockbox{ id: Uint64 }
