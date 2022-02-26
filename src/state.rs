@@ -1,8 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Uint128, Uint64};
 use cosmwasm_std::testing::MockApi;
+use cosmwasm_std::{Addr, Uint128, Uint64};
 use cw_storage_plus::{Item, Map};
 use cw_utils::Scheduled;
 
@@ -21,13 +21,13 @@ pub struct Lockbox {
     pub claims: Vec<Claim>,
     pub expiration: Scheduled,
     pub total_amount: Uint128,
-    pub resetted: bool
+    pub resetted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Claim {
     pub addr: String,
-    pub amount: Uint128
+    pub amount: Uint128,
 }
 
 pub const LOCKBOXES: Map<u64, Lockbox> = Map::new("lock_boxes");

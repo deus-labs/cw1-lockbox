@@ -1,9 +1,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{to_binary, Addr, CosmosMsg, CustomQuery, Querier, QuerierWrapper, StdResult, WasmMsg, WasmQuery, Uint64};
+use cosmwasm_std::{
+    to_binary, Addr, CosmosMsg, CustomQuery, Querier, QuerierWrapper, StdResult, Uint64, WasmMsg,
+    WasmQuery,
+};
 
-use crate::msg::{LockboxResponse, ExecuteMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, LockboxResponse, QueryMsg};
 
 /// CwTemplateContract is a wrapper around Addr that provides a lot of helpers
 /// for working with this.

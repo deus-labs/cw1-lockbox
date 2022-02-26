@@ -1,13 +1,14 @@
-use std::ops::Add;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Addr, Uint128, Uint64, StdError, OverflowError};
+use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, OverflowError, Response, StdError, StdResult, Uint128, Uint64, Order};
 use cw2::set_contract_version;
 use cw_utils::Scheduled;
+use std::ops::Add;
+use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
-use crate::msg::{LockboxResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Claim, Config, CONFIG, LOCK_BOX_SEQ, Lockbox, LOCKBOXES};
+use crate::msg::{ExecuteMsg, InstantiateMsg, ListLockboxResponse, LockboxResponse, QueryMsg};
+use crate::state::{Claim, Config, Lockbox, CONFIG, LOCKBOXES, LOCK_BOX_SEQ};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw1-lockbox";
@@ -65,17 +66,15 @@ pub fn execute_create_lockbox(
 
     let total_amount: Uint128 = claims.clone().into_iter().map(|c| c.amount).sum();
 
-    let id = LOCK_BOX_SEQ.update::<_, StdError>(deps.storage, |id| {
-        Ok(id.add(Uint64::new(1)))
-    })?;
+    let id = LOCK_BOX_SEQ.update::<_, StdError>(deps.storage, |id| Ok(id.add(Uint64::new(1))))?;
 
-    let lockbox = Lockbox{
+    let lockbox = Lockbox {
         id,
         owner,
         claims,
         expiration,
         total_amount,
-        resetted: false
+        resetted: false,
     };
 
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
@@ -86,19 +85,41 @@ pub fn execute_create_lockbox(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetLockBox{ id } => to_binary(&query_lockbox(deps, id)?),
+        QueryMsg::GetLockBox { id } => to_binary(&query_lockbox(deps, id)?),
     }
 }
 
 fn query_lockbox(deps: Deps, id: Uint64) -> StdResult<LockboxResponse> {
     let lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
-    let res = LockboxResponse{
+    let res = LockboxResponse {
         id,
         owner: lockbox.owner,
         claims: lockbox.claims,
         expiration: lockbox.expiration,
         total_amount: lockbox.total_amount,
-        resetted: lockbox.resetted
+        resetted: lockbox.resetted,
+    };
+    Ok(res)
+}
+
+// settings for pagination
+const MAX_LIMIT: u32 = 30;
+const DEFAULT_LIMIT: u32 = 10;
+
+fn range_lockbox(
+    deps: Deps,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+) -> StdResult<ListLockboxResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(Bound::exclusive);
+    let lockboxes: StdResult<Vec<_>> = LOCKBOXES
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .collect();
+
+    let res = ListLockboxResponse{
+        lockboxes: lockboxes?.into_iter().map(|l| l.1).collect()
     };
     Ok(res)
 }
@@ -106,7 +127,9 @@ fn query_lockbox(deps: Deps, id: Uint64) -> StdResult<LockboxResponse> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info};
+    use cosmwasm_std::testing::{
+        mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info,
+    };
     use cosmwasm_std::{coins, from_binary};
 
     /*
@@ -180,28 +203,36 @@ mod tests {
     fn create_lockbox() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg { admin: "ADMIN".to_string()};
+        let msg = InstantiateMsg {
+            admin: "ADMIN".to_string(),
+        };
         let info = mock_info("creator", &[]);
         let mut env = mock_env();
         env.block.height = 1;
         let _res = instantiate(deps.as_mut(), env, info.clone(), msg).unwrap();
 
         let claims = vec![
-            Claim{ addr: "claim1".to_string(), amount: Uint128::new(4) },
-            Claim{ addr: "claim2".to_string(), amount: Uint128::new(15) },
+            Claim {
+                addr: "claim1".to_string(),
+                amount: Uint128::new(4),
+            },
+            Claim {
+                addr: "claim2".to_string(),
+                amount: Uint128::new(15),
+            },
         ];
-        let msg = ExecuteMsg::CreateLockbox{
+        let msg = ExecuteMsg::CreateLockbox {
             owner: "OWNER".to_string(),
             claims: claims.clone(),
-            expiration: Scheduled::AtHeight(5)
+            expiration: Scheduled::AtHeight(5),
         };
         let err = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap_err();
-        assert_eq!(err, ContractError::LockboxExpired{});
+        assert_eq!(err, ContractError::LockboxExpired {});
 
-        let msg = ExecuteMsg::CreateLockbox{
+        let msg = ExecuteMsg::CreateLockbox {
             owner: "OWNER".to_string(),
             claims: claims.clone(),
-            expiration: Scheduled::AtHeight(100_000)
+            expiration: Scheduled::AtHeight(100_000),
         };
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
