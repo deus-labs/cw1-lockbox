@@ -6,7 +6,7 @@ use cw2::set_contract_version;
 use cw_utils::Scheduled;
 
 use crate::error::ContractError;
-use crate::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{LockboxResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Claim, Config, CONFIG, LOCK_BOX_SEQ, Lockbox, LOCKBOXES};
 
 // version info for migration info
@@ -74,7 +74,8 @@ pub fn execute_create_lockbox(
         owner,
         claims,
         expiration,
-        total_amount
+        total_amount,
+        resetted: false
     };
 
     LOCKBOXES.save(deps.storage, id.u64(), &lockbox)?;
@@ -85,12 +86,21 @@ pub fn execute_create_lockbox(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+        QueryMsg::GetLockBox{ id } => to_binary(&query_lockbox(deps, id)?),
     }
 }
 
-fn query_count(deps: Deps) -> StdResult<CountResponse> {
-    unimplemented!()
+fn query_lockbox(deps: Deps, id: Uint64) -> StdResult<LockboxResponse> {
+    let lockbox = LOCKBOXES.load(deps.storage, id.u64())?;
+    let res = LockboxResponse{
+        id,
+        owner: lockbox.owner,
+        claims: lockbox.claims,
+        expiration: lockbox.expiration,
+        total_amount: lockbox.total_amount,
+        resetted: lockbox.resetted
+    };
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -182,11 +192,20 @@ mod tests {
         ];
         let msg = ExecuteMsg::CreateLockbox{
             owner: "OWNER".to_string(),
-            claims,
+            claims: claims.clone(),
             expiration: Scheduled::AtHeight(5)
         };
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        let err = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap_err();
         assert_eq!(err, ContractError::LockboxExpired{});
 
+        let msg = ExecuteMsg::CreateLockbox{
+            owner: "OWNER".to_string(),
+            claims: claims.clone(),
+            expiration: Scheduled::AtHeight(100_000)
+        };
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let res = query_lockbox(deps.as_ref(), Uint64::new(1)).unwrap();
+        assert_eq!(res.id, Uint64::new(1))
     }
 }
