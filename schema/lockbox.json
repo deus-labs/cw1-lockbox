@@ -7,7 +7,7 @@
     "expiration",
     "id",
     "owner",
-    "resetted",
+    "reset",
     "total_amount"
   ],
   "properties": {
@@ -47,7 +47,7 @@
         }
       ]
     },
-    "resetted": {
+    "reset": {
       "type": "boolean"
     },
     "total_amount": {
@@ -67,7 +67,7 @@
       ],
       "properties": {
         "addr": {
-          "type": "string"
+          "$ref": "#/definitions/Addr"
         },
         "amount": {
           "$ref": "#/definitions/Uint128"
